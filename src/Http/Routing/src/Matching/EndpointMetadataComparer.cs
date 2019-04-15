@@ -1,12 +1,58 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.AspNetCore.Http;
 
 namespace Microsoft.AspNetCore.Routing.Matching
 {
+    /// <summary>
+    /// A comparer that can order <see cref="Endpoint"/> instances based on implementations of
+    /// <see cref="IEndpointComparerPolicy" />. The implementation can be retrieved from the service
+    /// provider and provided to <see cref="CandidateSet.ExpandEndpoint(int, IReadOnlyList{Endpoint}, IComparer{Endpoint})"/>.
+    /// </summary>
+    public sealed class EndpointMetadataComparer : IComparer<Endpoint>
+    {
+        private readonly IComparer<Endpoint>[] _comparers;
+
+        internal EndpointMetadataComparer(IEnumerable<MatcherPolicy> policies)
+        {
+            if (policies == null)
+            {
+                throw new ArgumentNullException(nameof(policies));
+            }
+
+            _comparers = policies.OrderBy(p => p.Order).OfType<IEndpointComparerPolicy>().Select(p => p.Comparer).ToArray();
+        }
+
+        int IComparer<Endpoint>.Compare(Endpoint x, Endpoint y)
+        {
+            if (x == null)
+            {
+                throw new ArgumentNullException(nameof(x));
+            }
+
+            if (y == null)
+            {
+                throw new ArgumentNullException(nameof(y));
+            }
+
+            var comparers = _comparers;
+            for (var i = 0; i < comparers.Length; i++)
+            {
+                var compare = comparers[i].Compare(x, y);
+                if (compare != 0)
+                {
+                    return compare;
+                }
+            }
+
+            return 0;
+        }
+    }
+
     /// <summary>
     /// A base class for <see cref="IComparer{Endpoint}"/> implementations that use 
     /// a specific type of metadata from <see cref="Endpoint.Metadata"/> for comparison.
